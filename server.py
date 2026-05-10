@@ -272,18 +272,46 @@ def _load_diarize_pipeline():
 
 
 def _diarize_audio(path: str, num_speakers: int | None) -> list[dict[str, Any]]:
-    """Run speaker diarization. Returns [{start, end, speaker}]."""
+    """Run speaker diarization. Returns [{start, end, speaker}].
+
+    Pyannote requires WAV input — converts the source file via ffmpeg if needed.
+    """
     pipeline = _load_diarize_pipeline()
-    kwargs: dict[str, Any] = {}
-    if num_speakers:
-        kwargs["num_speakers"] = num_speakers
-    diarization = pipeline(path, **kwargs)
-    segments = [
-        {"start": turn.start, "end": turn.end, "speaker": speaker}
-        for turn, _, speaker in diarization.itertracks(yield_label=True)
-    ]
-    LOG.debug("diarization: %d speaker turns from %s", len(segments), path)
-    return segments
+
+    tmp_wav_path: str | None = None
+    if not path.lower().endswith(".wav"):
+        tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False, prefix="whisper-mcp-diarize-")
+        tmp_wav_path = tmp.name
+        tmp.close()
+        LOG.info("diarize: converting %s to 16kHz mono WAV for pyannote...", path)
+        r = subprocess.run(
+            [FFMPEG, "-y", "-i", path, "-ar", "16000", "-ac", "1", tmp_wav_path],
+            capture_output=True, timeout=600,
+        )
+        if r.returncode != 0:
+            os.unlink(tmp_wav_path)
+            raise RuntimeError(f"ffmpeg WAV conversion failed: {r.stderr.decode()[:300]}")
+        diarize_path = tmp_wav_path
+    else:
+        diarize_path = path
+
+    try:
+        kwargs: dict[str, Any] = {}
+        if num_speakers:
+            kwargs["num_speakers"] = num_speakers
+        diarization = pipeline(diarize_path, **kwargs)
+        segments = [
+            {"start": turn.start, "end": turn.end, "speaker": speaker}
+            for turn, _, speaker in diarization.itertracks(yield_label=True)
+        ]
+        LOG.debug("diarization: %d speaker turns from %s", len(segments), path)
+        return segments
+    finally:
+        if tmp_wav_path:
+            try:
+                os.unlink(tmp_wav_path)
+            except OSError:
+                pass
 
 
 def _assign_speakers(
