@@ -183,6 +183,60 @@ _diarize_pipeline = None
 _diarize_pipeline_lock = threading.Lock()
 
 
+def _patch_pyannote_compat() -> None:
+    """Apply two compatibility patches needed for pyannote.audio 3.x with recent deps:
+
+    1. huggingface_hub >=1.0 dropped the `use_auth_token` kwarg from hf_hub_download.
+       Pyannote 3.4 still passes it. We translate it to `token=` transparently.
+
+    2. torch >=2.6 changed `weights_only` default to True, which breaks pyannote's
+       checkpoint loading (its .ckpt files contain custom Python objects).
+       We patch lightning_fabric / pytorch_lightning's _load to use weights_only=False.
+    """
+    import sys
+    import functools
+    import torch
+    import huggingface_hub
+    from huggingface_hub import hf_hub_download as _orig_dl
+
+    # --- Patch 1: hf_hub_download use_auth_token → token ---
+    if not getattr(_orig_dl, "_pyannote_compat_patched", False):
+        @functools.wraps(_orig_dl)
+        def _compat_dl(*args, use_auth_token=None, **kwargs):
+            if use_auth_token is not None and "token" not in kwargs:
+                kwargs["token"] = use_auth_token
+            return _orig_dl(*args, **kwargs)
+        _compat_dl._pyannote_compat_patched = True  # type: ignore[attr-defined]
+        huggingface_hub.hf_hub_download = _compat_dl
+        for mod in list(sys.modules.values()):
+            try:
+                if mod is not None and getattr(mod, "hf_hub_download", None) is _orig_dl:
+                    mod.hf_hub_download = _compat_dl
+            except Exception:
+                pass
+        LOG.debug("patch 1 applied: hf_hub_download use_auth_token compat")
+
+    # --- Patch 2: torch.load weights_only=False for pyannote checkpoints ---
+    def _compat_load(path_or_url, map_location=None, weights_only=None):
+        return torch.load(path_or_url, map_location=map_location, weights_only=False)
+
+    try:
+        import lightning_fabric.utilities.cloud_io as _lf
+        if not getattr(_lf._load, "_pyannote_compat_patched", False):
+            _lf._load = _compat_load
+            LOG.debug("patch 2a applied: lightning_fabric._load weights_only compat")
+    except Exception:
+        pass
+
+    try:
+        import pytorch_lightning.core.saving as _pl_saving
+        if not getattr(_pl_saving.pl_load, "_pyannote_compat_patched", False):
+            _pl_saving.pl_load = _compat_load
+            LOG.debug("patch 2b applied: pytorch_lightning pl_load weights_only compat")
+    except Exception:
+        pass
+
+
 def _load_diarize_pipeline():
     """Load (or return cached) pyannote diarization pipeline."""
     global _diarize_pipeline
@@ -197,6 +251,7 @@ def _load_diarize_pipeline():
                 "to enable speaker diarization."
             )
         try:
+            _patch_pyannote_compat()
             from pyannote.audio import Pipeline
             import torch
             pipeline = Pipeline.from_pretrained(
