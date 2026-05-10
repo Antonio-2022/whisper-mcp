@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.antonio.whisper-mcp</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/antonio/.pyenv/versions/3.11.9/bin/python</string>
+    <string>/Users/antonio/tools/whisper-mcp/server.py</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/antonio/tools/whisper-mcp</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+
+  <key>Nice</key>
+  <integer>5</integer>
+
+  <key>StandardOutPath</key>
+  <string>/Users/antonio/Library/Logs/whisper-mcp.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/antonio/Library/Logs/whisper-mcp.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/Users/antonio/.pyenv/versions/3.11.9/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>WHISPER_MCP_HOST</key>
+    <string>127.0.0.1</string>
+    <key>WHISPER_MCP_PORT</key>
+    <string>8765</string>
+    <key>HF_TOKEN</key>
+    <string>${HF_TOKEN}</string>
+  </dict>
+</dict>
+</plist>

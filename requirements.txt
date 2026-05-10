@@ -1,0 +1,7 @@
+fastmcp>=3.2.0
+mlx-whisper>=0.4.0
+pyannote.audio>=3.3
+torch>=2.0
+torchaudio>=2.0
+huggingface_hub>=1.0
+soundfile>=0.12
