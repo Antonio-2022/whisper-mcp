@@ -60,6 +60,17 @@ Add to your `~/.claude/settings.json` under `mcpServers`:
 }
 ```
 
+### Claude Code skill (optional)
+
+Install the `/transcribe` skill for guided, high-quality transcriptions:
+
+```bash
+mkdir -p ~/.claude/skills/transcribe
+cp skills/transcribe.md ~/.claude/skills/transcribe/SKILL.md
+```
+
+Then use `/transcribe` in Claude Code — it handles language detection, diarization, polling, and output formatting automatically.
+
 ## MCP Tools
 
 | Tool | Description |
