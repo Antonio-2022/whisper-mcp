@@ -58,6 +58,7 @@ LOG.addHandler(_sh)
 # ---- model lifecycle ---------------------------------------------------------
 
 _model_lock = threading.Lock()
+_diarize_lock = threading.Lock()  # pyannote runs on MPS — serialize like the whisper model
 _last_used: float = 0.0
 _model_loaded: bool = False
 _watchdog_started: bool = False
@@ -299,7 +300,8 @@ def _diarize_audio(path: str, num_speakers: int | None) -> list[dict[str, Any]]:
         kwargs: dict[str, Any] = {}
         if num_speakers:
             kwargs["num_speakers"] = num_speakers
-        diarization = pipeline(diarize_path, **kwargs)
+        with _diarize_lock:
+            diarization = pipeline(diarize_path, **kwargs)
         segments = [
             {"start": turn.start, "end": turn.end, "speaker": speaker}
             for turn, _, speaker in diarization.itertracks(yield_label=True)
