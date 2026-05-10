@@ -384,6 +384,7 @@ class Job:
     segment_count: int = 0
     speakers: list[str] | None = None
     error: str | None = None
+    raw_segments: list[dict] | None = field(default=None, repr=False)
     thread: threading.Thread | None = field(default=None, repr=False)
 
     def public(self) -> dict[str, Any]:
@@ -532,6 +533,10 @@ def _run_job(job: Job) -> None:
                 )
 
         # Phase 3: Build output
+        job.raw_segments = [
+            {k: v for k, v in s.items() if k != "words"}  # drop word-level timestamps to save memory
+            for s in all_segments
+        ]
         job.text = " ".join(s.get("text", "").strip() for s in all_segments).strip()
         job.segment_count = len(all_segments)
 
@@ -645,6 +650,44 @@ def get_transcribe(job_id: str) -> dict[str, Any]:
     if job is None:
         return {"error": f"unknown job_id: {job_id}"}
     return job.public()
+
+
+@mcp.tool
+def get_segments(job_id: str) -> dict[str, Any]:
+    """Return per-segment timestamps and text for a completed job.
+
+    Used for the dual-run merge workflow: call this on both the whisper-only
+    job and the diarized job, then align by timestamp to get the best text
+    per speaker turn.
+
+    Each segment contains:
+      - start: float (seconds from audio start)
+      - end: float (seconds)
+      - text: transcribed text for this segment
+      - speaker: speaker ID (only present when the job used diarize=True)
+    """
+    with _JOBS_LOCK:
+        job = _JOBS.get(job_id)
+    if job is None:
+        return {"error": f"unknown job_id: {job_id}"}
+    if job.status != "done":
+        return {"error": f"job not done yet, status={job.status}"}
+    segs = job.raw_segments or []
+    simplified = [
+        {
+            "start": round(s.get("start", 0.0), 2),
+            "end": round(s.get("end", 0.0), 2),
+            "text": s.get("text", "").strip(),
+            **( {"speaker": s["speaker"]} if "speaker" in s else {} ),
+        }
+        for s in segs
+    ]
+    return {
+        "job_id": job_id,
+        "segment_count": len(simplified),
+        "diarized": job.diarize and bool(job.speakers),
+        "segments": simplified,
+    }
 
 
 @mcp.tool
